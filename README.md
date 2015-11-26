@@ -1,1 +1,1 @@
-![Sometimes...](https://xkcd.com/1319/)
+![Sometimes...](https://imgs.xkcd.com/comics/automation.png)
