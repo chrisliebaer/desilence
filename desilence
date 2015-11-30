@@ -6,6 +6,7 @@
 
 export FILE="$1"
 export BASENAME=`basename "$FILE"`
+export EXTENSION="${BASENAME##*.}"
 
 # configuration
 export WORKER_POOL_SIZE=${WORKER_POOL_SIZE:-`nproc`}
@@ -23,7 +24,7 @@ export FFMPEG_OUTPUT="$WORK_DIR/silencedetect.log"
 export SILENCE_SEGMENTS="$WORK_DIR/silence-segments.csv"
 
 # csv with segments of content
-export WORKER_JOBS="$WORK_DIRsegments.csv"
+export WORKER_JOBS="$WORK_DIR/segments.csv"
 
 # directory where worker store segments
 export SEGMENT_DIR="$WORK_DIR/segments"
@@ -107,7 +108,7 @@ cat $WORKER_JOBS | parallel --no-notice --bar -P $WORKER_POOL_SIZE $WORKER_SCRIP
 
 # recombine video segments
 echo "Rebuilding video from segments"
-for file in $SEGMENT_DIR/*; do
+for file in $SEGMENT_DIR/*.$EXTENSION; do
 	echo "file '$file'" >> "$CONCAT_FILE"
 done
 ffmpeg -f concat -i "$CONCAT_FILE" "desilence_$FILE"
