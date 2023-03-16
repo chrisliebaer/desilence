@@ -139,7 +139,7 @@ with tempfile.TemporaryDirectory() as dir:
 					input = input,
 					output = seg_file,
 					start = start,
-					duration = duration,
+					duration = "{:.4f}".format(duration),
 			), text = True, capture_output = True)
 			if segment_encoder.returncode != 0:
 				log.error("error encoding segment " + str(i) + " at " + str(start) + "seconds: " + segment_encoder.stderr)
