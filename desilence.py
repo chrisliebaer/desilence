@@ -132,7 +132,6 @@ with tempfile.TemporaryDirectory() as dir:
 		if type == SegmentType.AUDIBLE and duration > 0:
 			log.info("processing segment " + str(i) + "/" + str(len(segments)))
 			seg_file = os.path.join(dir, "seg_" + str(i) + ".nut")
-			concat += "file '" + seg_file + "'" + "\n"
 		
 			# TODO: multi threaded		
 			segment_encoder = subprocess.run(format_array(shlex.split(preset["segment_encoder"]),
@@ -144,6 +143,40 @@ with tempfile.TemporaryDirectory() as dir:
 			if segment_encoder.returncode != 0:
 				log.error("error encoding segment " + str(i) + " at " + str(start) + "seconds: " + segment_encoder.stderr)
 				sys.exit(-1)
+			
+			# sometimes segments are corrupt and contain no audio, we use ffpb to detect this
+			ffprobe_test = subprocess.run([
+				"ffprobe",
+				"-hide_banner",
+				"-count_frames",
+				"-loglevel",
+				"error",
+				"-print_format",
+				"json",
+				"-show_streams",
+				seg_file
+			], text = True, capture_output = True)
+			if ffprobe_test.returncode != 0:
+				log.warning("skipping segment " + str(i) + " because it is corrupt")
+				continue
+			stream_json = json.loads(ffprobe_test.stdout)
+
+			# despite no errors, some segments are too short to contain any frames
+			# we skip these as well by requesting the frame count from ffprobe and cheking for "N/A"
+			# both video and audio can be N/A and we check for both and report them individually
+			all_streams_fine = True
+			for stream in stream_json["streams"]:
+				human_readable_idenfier = f'stream {stream["index"]}: {stream["codec_type"]} ({stream["codec_name"]})'
+
+				if not "nb_read_frames" in stream or stream["nb_read_frames"].lower() == "n/a":
+					log.warning("skipping segment " + str(i) + " because " + human_readable_idenfier + " has no frames")
+					all_streams_fine = False
+			
+			if not all_streams_fine:
+				continue
+
+			# only append if there were no errors
+			concat += "file '" + seg_file + "'\n"
 
 		# counting audible segments is important to display accurate progress
 		i += 1
@@ -153,6 +186,8 @@ with tempfile.TemporaryDirectory() as dir:
 	log.info("Reassemble segments...")
 	subprocess.check_output([
 		"ffmpeg",
+		"-fflags",
+		"+genpts",
 		"-hide_banner",
 		"-nostdin",
 		"-f",
