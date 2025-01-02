@@ -19,7 +19,7 @@ CONFIG = {
 		"default": {
 			"output": "{base}_desilenced.mkv",
 			"silencedetect": "ffmpeg -hide_banner -nostdin -i {input} -af silencedetect=n=-50dB:d=0.5 -vn -f null -",
-			"segment_encoder": "ffmpeg -hide_banner -nostdin -ss {start} -i {input} -t {duration} -c:v libx264 -crf 26 -preset slow -c:a libopus -b:a 96k -y {output}"
+			"segment_encoder": "ffmpeg -hide_banner -nostdin -ss {start} -i {input} {duration} -c:v libx264 -crf 26 -preset slow -c:a libopus -b:a 96k -y {output}"
 		}
 	}
 }
@@ -54,6 +54,9 @@ def parse_silencedetect(output):
 				last_start = float(data.group(1))
 				segments.append((SegmentType.AUDIBLE, last_end, last_start))
 				
+				# entering silence, clear last_end
+				last_end = 0.0
+
 			elif data.startswith("silence_end"):
 				data = re.match(r'^silence_end: ([e0-9.-]+) \| silence_duration: ([0-9.]+)$', data)
 				
@@ -61,11 +64,16 @@ def parse_silencedetect(output):
 				segments.append((SegmentType.INAUDIBLE, last_start, last_end))
 				
 				total_duration += float(data.group(2))
+
+				# left silence, clear last_start
+				last_start = 0.0
 			else:
 				raise Exception("Unkown formating from silencedetect filter, please report this error. Line " + data)
 	
-	
-	# TODO: make sure last segment is handled correctly in all cases
+	# if we end in audible segment, we are missing the last segment
+	if last_end > 0.0:
+		log.debug("last segment is audible, manually adding segment")
+		segments.append((SegmentType.AUDIBLE, last_end, None))
 	
 	return (segments, total_duration)
 
@@ -77,8 +85,12 @@ parser.add_argument("--output", "-o", help = "specifies output file (supports {b
 parser.add_argument("--config", "-c", help = "path to config")
 parser.add_argument("--preset", "-p", help = "selects encoder string with given name in config")
 parser.add_argument("--parallel", "-j", help = "number of parallel ffmpeg instances (defaults to logical core count) [not yet implemented]", type = int)
+parser.add_argument("--verbose", "-v", help = "increase verbosity", action = "store_true")
 
 args = parser.parse_args()
+
+if args.verbose:
+	log.getLogger().setLevel(log.DEBUG)
 
 if not os.path.isfile(args.input):
 	log.error("file not found: " + args.input)
@@ -119,6 +131,10 @@ if silencedetect.returncode != 0:
 (segments, total_duration) = parse_silencedetect(silencedetect.stderr)
 log.info("Found total of " + str(len(segments)) + " segments with total duration of " + str(total_duration) + " seconds of silence.")
 
+if log.getLogger().getEffectiveLevel() == log.DEBUG:
+	for (type, start, end) in segments:
+		log.debug("segment: " + str(type) + " from " + str(start) + " to " + (str(end) if end is not None else "end"))
+
 # start processing in temporary directory
 # create temporary directory for processing of segments
 with tempfile.TemporaryDirectory() as dir:
@@ -127,18 +143,31 @@ with tempfile.TemporaryDirectory() as dir:
 	i = 0
 
 	for (type, start, end) in segments:
-		duration = end - start
+		# duration is None for last segment, in which case we omit the -t parameter
+		if end is not None:
+			duration = end - start
+		else:
+			duration = None
 		
-		if type == SegmentType.AUDIBLE and duration > 0:
+		if type == SegmentType.AUDIBLE and (duration is None or duration > 0.0):
 			log.info("processing segment " + str(i) + "/" + str(len(segments)))
 			seg_file = os.path.join(dir, "seg_" + str(i) + ".nut")
 		
-			# TODO: multi threaded		
-			segment_encoder = subprocess.run(format_array(shlex.split(preset["segment_encoder"]),
+			# since -t argument requires two arguments, we need to inject the placeholder before splitting the strings
+			preset_command = preset["segment_encoder"]
+			if duration is None:
+				# remove placeholder if duration is None
+				preset_command = preset_command.replace("{duration}", "")
+			else:
+				# replace placeholder with -t argument and let split handle the rest
+				preset_command = preset_command.replace("{duration}", "-t {duration}")
+
+			# TODO: multi threaded
+			segment_encoder = subprocess.run(format_array(shlex.split(preset_command),
 					input = input,
 					output = seg_file,
 					start = start,
-					duration = "{:.4f}".format(duration),
+					duration = "{:.4f}".format(duration) if duration is not None else ""
 			), text = True, capture_output = True)
 			if segment_encoder.returncode != 0:
 				log.error("error encoding segment " + str(i) + " at " + str(start) + "seconds: " + segment_encoder.stderr)
