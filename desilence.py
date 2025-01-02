@@ -3,6 +3,7 @@
 import subprocess
 import re
 import shlex
+import shutil
 import os
 import sys
 import tempfile
@@ -86,11 +87,14 @@ parser.add_argument("--config", "-c", help = "path to config")
 parser.add_argument("--preset", "-p", help = "selects encoder string with given name in config")
 parser.add_argument("--parallel", "-j", help = "number of parallel ffmpeg instances (defaults to logical core count) [not yet implemented]", type = int)
 parser.add_argument("--verbose", "-v", help = "increase verbosity", action = "store_true")
+parser.add_argument("--copy-instead", help = "if no segments are detected, copy the file instead of exiting with error", action = "store_true")
 
 args = parser.parse_args()
 
 if args.verbose:
 	log.getLogger().setLevel(log.DEBUG)
+else:
+	log.getLogger().setLevel(log.INFO)
 
 if not os.path.isfile(args.input):
 	log.error("file not found: " + args.input)
@@ -129,6 +133,18 @@ if silencedetect.returncode != 0:
 
 # parse ffmpeg output
 (segments, total_duration) = parse_silencedetect(silencedetect.stderr)
+
+# if there are no segments, we can skip the rest of the processing
+if len(segments) == 0:
+	log.warning("no silence segments found")
+	if args.copy_instead:
+		log.info("copying file instead of processing")
+		shutil.copyfile(input, output)
+		sys.exit(0)
+	else:
+		log.error("no silence segments found, exiting")
+		sys.exit(-1)
+
 log.info("Found total of " + str(len(segments)) + " segments with total duration of " + str(total_duration) + " seconds of silence.")
 
 if log.getLogger().getEffectiveLevel() == log.DEBUG:
