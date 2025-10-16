@@ -45,9 +45,16 @@ def parse_silencedetect(output):
 	
 	# we need to convert silence segments into the inverse: audible sections
 	for line in output.splitlines():
-		m = re.match(r'^\[silencedetect[^]]+\] (.+)$', line)
+
+		# example lines:
+		# [silencedetect @ 0x55f8c8e1ec00] silence_start: 12.345
+		# [silencedetect @ 0x55f8c8e1ec00] silence_end: 15.678 | silence_duration: 3.333
+		# sometimes there is additional information in the brackets
+		# [Parsed_silencedetect_0 @ 0x55f8c8e1ec00] silence_start: 12.345
+
+		m = re.match(r'^\[(silencedetect|Parsed_silencedetect)[^]]+\] (?P<data>.+)$', line)
 		if m is not None:
-			data = m.group(1)
+			data = m.group("data")
 			
 			if data.startswith("silence_start"):
 			
