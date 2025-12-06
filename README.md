@@ -1,3 +1,15 @@
+# ⚠️ Archived / Deprecated
+
+**This project has been superseded by [desilence-rs](https://github.com/chrisliebaer/desilence-rs).**
+
+The original Python/Bash implementation relied on temporary files, multiple FFmpeg passes, and inefficient re-encoding loops. The new **Rust implementation** solves these issues with a high-performance streaming architecture. It pipes raw video/audio directly to FFmpeg ([stdout](cci:1://file:///g:/development/projects/desilence-rs/src/pipeline.rs:484:0-490:1) -> `stdin`) in a single pass, ensuring:
+
+*   **Zero Quality Loss**: No intermediate re-encoding.
+*   **Maximum Speed**: Processing happens entirely in-memory and keeps the pipe full.
+*   **No "Disk Thrashing"**: Eliminates the need for gigabytes of temporary segment files.
+
+Please head over to [desilence-rs](https://github.com/chrisliebaer/desilence-rs) for the maintained and improved version.
+
 # Legacy
 This used to be a very hack and dirty bash script. Due to various problems (who would have guessed) I decided to rewrite it in Python. Which turned out to be a very bad idea as well, but I guess I still improved it. If you are interested in the old bash script, you can find it right here: https://github.com/chrisliebaer/desilence/blob/6e9aefc69177639dba9de4edb69387e2f3c95c7d/desilence
 
